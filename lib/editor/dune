@@ -1,0 +1,7 @@
+(library
+ (name editor)
+ (public_name speck.editor)
+ (libraries dust.styles notty base)
+ (flags
+  (:standard -w -27-32-33-34-37-69)))
+
