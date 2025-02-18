@@ -3,7 +3,6 @@ type apply
 
 val handle_paint : apply -> Event_listener.t
 
-
 val canvas_apply : apply
 
 val select_color : apply

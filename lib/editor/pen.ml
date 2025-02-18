@@ -15,7 +15,7 @@ let handle_char (state: state) key =
 
 
 let handle_specials (state: state) (k, mods) = match k with
-  | `Backspace -> { state with canvas = Canvas.move_cursor state.canvas `Left }, true
+  | `Backspace -> { state with canvas = Canvas.move_cursor state.canvas `Left 1 }, true
   | `Tab -> { state with status = Colors }, true
   | _ -> state, false
 

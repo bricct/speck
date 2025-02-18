@@ -1,11 +1,12 @@
 open Notty
 open Base
+open Core
 
 type position = int * int
 
-type cell = int * int * int
+type color = int * int * int
 
-type color = cell
+type cell = color option
 
 type fragment = { 
   col : int; 
@@ -20,14 +21,18 @@ type t = {
   width : int;
   height : int;
   cells : cell array array;
-  pos : position;
+  cursor : Cursor.t;
   select : position option;
   undo : update list;
   redo : update list;
+  anim_state : int;
 }
 
-let eq_color (r1, g1, b1) (r2, g2, b2) =
-  r1 = r2 && g1 = g2 && b1 = b2
+let eq_color c1 c2 = 
+  match c1, c2 with
+  | None, None -> true
+  | Some (r1, g1, b1), Some (r2, g2, b2) -> r1 = r2 && g1 = g2 && b1 = b2
+  | _ -> false
 
 let is_light (r, g, b) = 
   r + g + b > 300
@@ -66,15 +71,15 @@ let do_update t update =
   | None -> t
   | Some l -> { t with undo = l :: t.undo; redo = []}
 
-
 let blank width height = {
   width;
   height = height * 2;
-  cells = Array.make_matrix ~dimx:(height * 2) ~dimy:width (0, 0, 0);
-  pos = (0, 0);
+  cells = Array.make_matrix ~dimx:(height * 2) ~dimy:width None;
+  cursor = Cursor.make Cursor.Circle (Cursor.size_exn 1);
   select = None;
   undo = [];
   redo = [];
+  anim_state = 0;
 }
 
 let apply_to_grid f (c1, r1) (c2, r2) = 
@@ -101,24 +106,40 @@ let fold t ~r_init ~c_init ~row ~col =
   in
   fst @@ Array.fold ~init:(r_init, 0) ~f t
 
-let to_image (t : t) pen_mode = 
-  let col_pos, row_pos = t.pos in
-  let row : (image * A.color list option) -> (A.color list * int) -> (image * A.color list option) = 
+let to_image (t : t) pen_mode =
+  let row : (image * A.color option list option) -> (A.color option list * int) -> (image * A.color option list option) = 
     fun (image, upper_colors) (color_list, row_idx) ->
       match upper_colors with
       | None -> (image, Some color_list)
       | Some uc ->
           let colors = List.rev @@ List.zip_exn uc color_list in
           let row_img = List.fold colors ~init:I.empty ~f:(fun acc (upper, lower) ->
-            let i = I.uchar A.(bg upper ++ fg lower) (Stdlib.Uchar.of_int 0x2584) 1 1 in
+            let uchar, attr = match lower, upper with
+            | None, None -> 0x0020, A.empty
+            | Some c, None -> 0x2584, A.(fg c)
+            | None, Some c -> 0x2580, A.(fg c)
+            | Some lc, Some uc -> 0x2584, A.(fg lc ++ bg uc)
+            in
+            let i = I.uchar attr (Stdlib.Uchar.of_int uchar) 1 1 in
             I.( acc <|> i))
           in
         I.(image <-> row_img), None
   in
-  let cursor_color c = if is_light c then black else white in
-  let col : A.color list -> (cell * int * int) -> A.color list = fun acc (color, row_idx, col_idx) ->
-    let (r, g, b) = match t.select with
-    | None -> if row_idx = row_pos && col_idx = col_pos && not pen_mode
+  let cursor_color c = 
+    let unblinked, blinked = match c with
+    | None -> Some white, None
+    | Some c -> match is_light c with 
+      | true -> Some black, Some c
+      | false -> Some white, Some c
+    in
+    if t.anim_state > 3 then
+      blinked
+    else
+      unblinked
+  in
+  let col : A.color option list -> (cell * int * int) -> A.color option list = fun acc (color, row_idx, col_idx) ->
+    let color = match t.select with
+    | None -> if (Cursor.check t.cursor (col_idx, row_idx)) && not pen_mode
         then cursor_color color
         else color
     | Some p ->
@@ -127,52 +148,40 @@ let to_image (t : t) pen_mode =
           let r_min, r_max = min r1 r2, max r1 r2 in
           c >= c_min && c <= c_max && r >= r_min && r <= r_max
         in
-        if within p t.pos (col_idx, row_idx) then
+        if within p (Cursor.get_pos t.cursor) (col_idx, row_idx) then
           cursor_color color
         else
           color
     in
-    A.rgb_888 ~r ~g ~b :: acc
+    Option.(color >>| (fun (r, g, b) -> A.rgb_888 ~r ~g ~b)) :: acc
   in
   fst @@ fold t.cells ~r_init:(I.empty, None) ~c_init:[] ~row ~col
 
-let move t selector dir = 
-  let bound d x = min (d - 1) x |> max 0 in
-  let (x, y) = selector t in
+let in_bounds t (x, y) =
+  x < t.width && x >= 0 && y < t.height && y >= 0
+
+let move t selector dir amount = 
   match dir with
-  | `Up -> (x, (y - 1) |> bound t.height)
-  | `Down -> (x, (y + 1) |> bound t.height) 
-  | `Left -> ( (x - 1) |> bound t.width, y)
-  | `Right -> ( (x + 1) |> bound t.width, y)
+  | `Up -> (0, 0 - amount)
+  | `Down -> (0, amount)
+  | `Left -> (0 - amount, 0)
+  | `Right -> (amount, 0)
 
-let move_cursor t dir = 
-  let selector = fun t -> t.pos in
-  let pos = move t selector dir in
-  { t with pos }
+let rec move_cursor t dir amount = 
+  let selector = fun t -> Cursor.get_pos t.cursor in
+  let vec = move t selector dir amount in
+  let cursor = Cursor.move t.cursor vec in
+  match List.filter (Cursor.points cursor) ~f:(in_bounds t) with
+  | [] -> move_cursor t dir (amount - 1)
+  | _ -> { t with cursor; anim_state = 0}
 
-let move_select t dir =
+let move_select t dir amount =
   let selector = fun t -> match t.select with
-    | None -> t.pos
+    | None -> Cursor.get_pos t.cursor
     | Some p -> p
   in
-  let select = Some (move t selector dir) in
-  { t with select }
-
-let create_for_grid f (c1, r1) (c2, r2) =
-  let min_c, max_c = min c1 c2, max c1 c2 in
-  let min_r, max_r = min r1 r2, max r1 r2 in
-  let rec loop c r l = 
-    if r > max_r then l
-    else
-      let c', r' = 
-        if c = max_c then
-          min_c, r + 1
-        else
-          c + 1, r
-      in
-      loop c' r' (f (c, r) :: l)
-  in loop min_c min_r []
-
+  let select = Some (move t selector dir amount) in
+  { t with select; anim_state = 0}
 
 let paint (t : t) color =
   let paint_fragment p =
@@ -180,30 +189,25 @@ let paint (t : t) color =
     let curr = t.cells.(row).(col) in
     { col; row; curr; next=color; }
   in
-  let paint_select = create_for_grid paint_fragment in
-  let update = match t.select with
-  | None -> (paint_fragment t.pos :: [])
-  | Some p -> paint_select p t.pos
-  in
+  let points = Cursor.points t.cursor |> List.filter ~f:(in_bounds t) in
+  let update = List.map points ~f:paint_fragment in
   do_update t update
-
-
-(* let paint (t : t) color = 
-  let paint_cell p = 
-    let col, row = p in
-    t.cells.(row).(col) <- color
-  in
-  let paint_select = apply_to_grid paint_cell in
-  match t.select with
-  | None -> paint_cell t.pos
-  | Some p -> paint_select p t.pos
-  *)
   
 let deselect (t: t) =
-  let pos = match t.select with
-  | None -> t.pos
-  | Some p -> p
-  in
-  { t with pos; select = None }
-  
+  { t with select = None }
 
+let tick t () =
+  { t with anim_state = (t.anim_state + 1) mod 6 }
+
+let set_cursor t cursor = 
+  match List.filter (Cursor.points cursor) ~f:(in_bounds t) with
+  | [] -> t
+  | _ -> { t with cursor; anim_state = 0}
+
+let grow_cursor t =
+  let cursor = Cursor.grow t.cursor in
+  set_cursor t cursor
+
+let shrink_cursor t =
+  let cursor = Cursor.shrink t.cursor in
+  set_cursor t cursor

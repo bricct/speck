@@ -1,8 +1,7 @@
 open Notty
 
 type state = State.t
-type event = [ `Timer | `Network | `Event of [ Unescape.event | `Resize of int * int ]]
-
+type event = [`Timer | `Animate | Dust.event ]
 
 let handle_key (state : state) (key : Unescape.key) = 
   match state.status with 
@@ -11,17 +10,21 @@ let handle_key (state : state) (key : Unescape.key) =
   | Colors -> Colors.handle_key state key
   | Pen -> Pen.handle_key state key
 
-let handle_event (state : state) = function
-  | `Key (`ASCII '\\', _) -> { state with show_debug = not state.show_debug }, true
-  | `Key k -> handle_key state k
-  | `Resize _ -> state, true
-  | _ -> state, false
-
-let handle_network (state : state) : state = state
+let handle_animate (state : state) : state * bool = 
+  let animate = (state.animate + 1) mod 6 in
+  let canvas = match state.status with
+  | Normal | Select -> Canvas.tick state.canvas ()
+  | Pen | Colors -> state.canvas
+  in
+  { state with animate; canvas; debug = "Animate" }, true
 let handle_timer (state : state) : state = state
 
-let update state evt = 
+let update (state : State.t) evt = 
   match evt with
-  | `Event evt -> handle_event { state with debug = "Event" } evt
-  | `Network -> handle_network state, true
+  | `Key (`ASCII '\\', _) -> { state with show_debug = not state.show_debug }, true
+  | `Key (`ASCII '?', _) -> { state with show_help = not state.show_help }, true
+  | `Key k -> handle_key state k
+  | `Resize _ -> state, true
+  | `Animate -> handle_animate state
   | `Timer -> handle_timer state, true
+  | _ -> state, false

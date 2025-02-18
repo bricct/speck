@@ -1,7 +1,10 @@
 (library
  (name editor)
  (public_name speck.editor)
- (libraries dust.styles notty base)
+ (libraries dust dust.styles notty base core)
  (flags
-  (:standard -w -27-32-33-34-37-69)))
+  (:standard -w -27-32-33-34-37-69))
+ (inline_tests)
+ (preprocess
+  (pps ppx_inline_test ppx_expect)))
 

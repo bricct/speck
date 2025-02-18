@@ -42,8 +42,8 @@ let to_image t =
   let register_img color idx =
     let inv_bound = if idx = 9 then 0 else idx + 1 in
     let num_img = I.string A.empty @@ Int.to_string @@ inv_bound in
-    let color_img = I.char A.(bg color) ' ' 3 2 |> Styles.Outline.outline A.(fg white) in
-    Layout.flex_v ~align:`Middle A.empty [ num_img; color_img ]
+    let color_img = I.char A.(bg color) ' ' 3 2 |> Styles.Outline.outline ~attr:A.(fg white) in
+    Layout.flex_v ~align:`Middle [ num_img; color_img ]
   in
 
   let register_imgs, _ = Array.fold t.arr ~init:([], 0) ~f:(fun (acc, idx) (r, g, b) -> 
@@ -54,16 +54,9 @@ let to_image t =
     let r, g, b = current t in
     A.rgb_888 ~r ~g ~b
   in
-  let current_img = I.char A.(bg current_color) ' ' 6 2 |> Styles.Outline.outline A.(fg white) in
-  let regs = Layout.flex_h ~gap:3 ~align:`Middle A.empty (List.rev register_imgs)
-  |> Styles.Outline.outline ~border:`Open A.empty
+  let current_img = I.char A.(bg current_color) ' ' 6 2 |> Styles.Outline.outline ~attr:A.(fg white) in
+  let regs = Layout.flex_h ~gap:3 ~align:`Middle (List.rev register_imgs)
+  |> Styles.Outline.outline ~border:`Open
   in
-  Layout.flex_v ~gap:1 ~align:`Middle A.empty [current_img; regs]
+  Layout.flex_v ~gap:1 ~align:`Middle [current_img; regs]
   
-
-  
-
-
-
-
-

@@ -6,7 +6,7 @@ type apply = state -> int -> state
 
 let canvas_apply (state : state) register = 
   let color = Registers.get state.registers register in
-  { state with canvas = Canvas.paint state.canvas color }
+  { state with canvas = Canvas.paint state.canvas (Some color) }
 
 let select_color (state : state) register =
   let registers = Registers.set_current state.registers register in
@@ -33,16 +33,6 @@ let handle_paint apply =
   | '8' -> apply state 8, true
   | '9' -> apply state 9, true
   | '0' -> apply state 0, true
-  | '!' -> apply state 1, true
-  | '@' -> apply state 2, true
-  | '#' -> apply state 3, true
-  | '$' -> apply state 4, true
-  | '%' -> apply state 5, true
-  | '^' -> apply state 6, true
-  | '&' -> apply state 7, true
-  | '*' -> apply state 8, true
-  | '(' -> apply state 9, true
-  | ')' -> apply state 0, true
   | _ -> state, false
   in
   char_handler handle_char

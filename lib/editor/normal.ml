@@ -10,15 +10,17 @@ let handle_char (state: state) key =
   let old = (state, false) in
   match key with
   | 'v' -> { state with status = Select }, true
-  | ' ' -> { state with canvas = Canvas.paint state.canvas @@ Registers.current state.registers; status = Pen }, true
+  | ' ' -> { state with canvas = Canvas.paint state.canvas @@ Some (Registers.current state.registers); status = Pen }, true
   | 'u' -> { state with canvas = Canvas.undo state.canvas }, true
   | 'r' -> { state with canvas = Canvas.redo state.canvas }, true
-  | 'x' -> { state with canvas = Canvas.paint state.canvas (0, 0, 0) }, true
+  | 'x' -> { state with canvas = Canvas.paint state.canvas None }, true
+  | '+' -> { state with canvas = Canvas.grow_cursor state.canvas }, true
+  | '-' -> { state with canvas = Canvas.shrink_cursor state.canvas }, true
   | _ -> old
 
 
 let handle_specials (state: state) (k, mods) = match k with
-  | `Backspace -> { state with canvas = Canvas.move_cursor state.canvas `Left }, true
+  | `Backspace -> { state with canvas = Canvas.move_cursor state.canvas `Left 1 }, true
   | `Tab -> { state with status = Colors }, true
   | _ -> state, false
 

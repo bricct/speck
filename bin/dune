@@ -2,6 +2,6 @@
  (public_name speck)
  (name main) 
  (modules main) 
- (libraries core lwt notty.unix notty.lwt speck.editor)
+ (libraries dust dust.styles core lwt notty.unix notty.lwt speck.editor)
  (flags
   (:standard -w -27-32-33-34-37-69)))
